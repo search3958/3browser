@@ -12,7 +12,6 @@ const {
 
 const {
   TabManager,
-  ViewY
 } = require('./tab');
 
 const {
@@ -30,8 +29,13 @@ const directory = `${__dirname}/..`;
 const lang = require(`${directory}/proprietary/lib/lang`);
 const {History} = require(`${directory}/proprietary/lib/history`);
 const history = new History();
-const viewY = new ViewY();
 let textColor = '#000';
+let optionView; // ← グローバル宣言
+
+// ★修正: ナビゲーションバーとタブバーの合計高さ
+const NAV_HEIGHT = 70;
+const TAB_HEIGHT = 70;
+const TOTAL_FOOTER_HEIGHT = NAV_HEIGHT + TAB_HEIGHT; // 140px
 
 // config setting
 const {LowLevelConfig} = require(`${directory}/proprietary/lib/config.js`);
@@ -59,7 +63,6 @@ if (enginesConfig.update().data.version !== 2) {
 function replaceBackslashes(str) {
   return str.replace(/\\/g, "\/");
 }
-
 function nw() {
   // create window
   monotConfig.update();
@@ -69,35 +72,25 @@ function nw() {
     minWidth: 450,
     minHeight: 450,
     show: false,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: isMac ? true : {
-      color: '#0000',
-      symbolColor: textColor ? textColor : (nativeTheme.shouldUseDarkColors ? '#fff' : '#000')
-    },
-    trafficLightPosition: {
-      x: 8,
-      y: 8
-    },
+
+    frame: false, // ← タイトルバーも信号機も削除
     transparent: false,
     backgroundColor: '#efefef',
     title: 'Monot by monochrome.',
     icon: isMac ? `${directory}/image/logo.icns` : `${directory}/image/logo.png`,
     webPreferences: {
+      contextIsolation: true,   // ← 必須
+       nodeIntegration: false,
       preload: `${directory}/preload/navigation.js`
     }
   });
+
   global.win.setBackgroundColor('#efefef');
   global.win.loadFile(
     isMac ?
       `${directory}/renderer/navigation/navigation-mac.html` :
       `${directory}/renderer/navigation/navigation.html`
   );
-
-  nativeTheme.on('updated', () => {
-    global.win.setTitleBarOverlay({
-      symbolColor: textColor ? textColor : (nativeTheme.shouldUseDarkColors ? '#fff' : '#000')
-    });
-  });
 
   function getEngine() {
     enginesConfig.update();
@@ -113,6 +106,7 @@ function nw() {
   global.win.on('closed', () => {
     global.win = null;
   });
+
   global.win.webContents.on('did-finish-load', () => {
     global.win.webContents.executeJavaScript(`
       engine = '${getEngine()}';
@@ -124,38 +118,61 @@ function nw() {
         document.head.innerHTML += '<link rel="stylesheet" href="${replaceBackslashes(style)}" onload="updateTextColor()">';
       `);
     }
+    // ナビゲーションバーとタブバーの配置CSSを挿入
+    global.win.webContents.executeJavaScript(`
+      document.body.classList.add('bottom-controls-layout');
+      document.body.style.paddingBottom = '${TOTAL_FOOTER_HEIGHT}px';
+      
+      const navElement = document.getElementsByTagName('nav')[0];
+      navElement.style.height = '${NAV_HEIGHT}px';
+      navElement.style.position = 'fixed';
+      navElement.style.bottom = '0'; 
+      navElement.style.left = '0';
+      navElement.style.right = '0';
+      navElement.style.top = 'unset';
+
+      const tabElElement = document.getElementsByTagName('tab-el')[0];
+      if (tabElElement) {
+        tabElElement.style.height = '${TAB_HEIGHT}px';
+        tabElElement.style.position = 'fixed';
+        tabElElement.style.bottom = '${NAV_HEIGHT}px'; 
+        tabElElement.style.left = '0';
+        tabElElement.style.right = '0';
+        tabElElement.style.top = 'unset';
+      }
+    `);
+
+    // 開発者ツールを自動で開く
+    global.win.webContents.openDevTools({ mode: 'detach' }); 
   });
+
   global.win.on('ready-to-show', () => {
     global.win.show();
   });
+
   if (monotConfig.update().get('ui') === 'thin') {
     global.win.webContents.executeJavaScript(`
       document.body.classList.add('thin');
     `);
   }
+
   global.win.webContents.insertCSS(`
     :root {
       --wallpaper: url('file://${monotConfig.get('wallpaper')}')!important;
     }
   `);
 
-  global.win.on('enter-full-screen', () => global.win.webContents.executeJavaScript(`document.body.classList.add('full')`));
-  global.win.on('leave-full-screen', () => global.win.webContents.executeJavaScript(`document.body.classList.remove('full')`));
+  global.win.on('enter-full-screen', () => 
+    global.win.webContents.executeJavaScript(`document.body.classList.add('full')`)
+  );
+  global.win.on('leave-full-screen', () => 
+    global.win.webContents.executeJavaScript(`document.body.classList.remove('full')`)
+  );
 
   // create tab
   global.tabs.newTab();
-
-  ipcMain.handle("getTextColor", () => {
-    return textColor;
-  });
-  ipcMain.on("setTextColor", (event, newColor) => {
-    textColor = newColor ? newColor : '#000';
-    console.debug(textColor);
-    global.win.setTitleBarOverlay({
-      symbolColor: textColor
-    });
-  });
 }
+
 
 function windowClose() {
   if (global.win) {
@@ -167,45 +184,298 @@ function windowClose() {
     global.win.close();
   }
 }
-
 app.on('ready', () => {
-  const optionView = new BrowserView({
+  // メインウィンドウ作成
+  nw(); // ここでのみウィンドウ生成
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    frame: false, // カスタムウィンドウコントロール用
+    transparent: false,
+    webPreferences: {
+      preload: path.join(directory, 'preload/main.js'),
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  global.win = mainWindow;
+
+  // OptionView 作成
+  optionView = new BrowserView({ // ← ここで代入
     transparent: true,
     frame: false,
     webPreferences: {
-      preload: `${directory}/preload/option.js`,
+      preload: path.join(directory, 'preload/option.js'),
       nodeIntegrationInSubFrames: true
     }
   });
-  optionView.webContents.loadURL(`file://${directory}/renderer/menu/index.html`);
-  monotConfig.update();
 
+  optionView.webContents.loadURL(`file://${directory}/renderer/menu/index.html`);
+  mainWindow.addBrowserView(optionView);
+  optionView.setBounds({ x: 0, y: 0, width: 800, height: 600 });
+
+  // SuggestView 作成
   const suggest = new BrowserView({
     transparent: true,
     frame: false,
     webPreferences: {
-      preload: `${directory}/preload/suggest.js`
+      preload: path.join(directory, 'preload/suggest.js')
     }
   });
   suggest.webContents.loadURL(`file://${directory}/renderer/suggest/index.html`);
+  mainWindow.addBrowserView(suggest);
+  suggest.setBounds({ x: 0, y: 0, width: 800, height: 0 }); // 初期は非表示
 
-  const style = (function() {
+  // CSS読み込み（任意）
+  const style = (() => {
     try {
-      return monotConfig.get('cssTheme') != null ?
-        require('fs').readFileSync(monotConfig.get('cssTheme'), 'utf-8') :
-        null;
-    } catch (e) {
+      const themePath = global.monotConfig?.get('cssTheme');
+      return themePath ? fs.readFileSync(themePath, 'utf-8') : '';
+    } catch {
       return '';
     }
   })();
   suggest.webContents.on('did-stop-loading', () => {
-    suggest.webContents.insertCSS(style, {
-      cssOrigin: 'user'
-    });
+    if (style) suggest.webContents.insertCSS(style, { cssOrigin: 'user' });
   });
 
-  // ipc channels
-  ipcMain.handle('moveView', (e, link, index) => {
+  // --- ウィンドウ操作 IPC ---
+  ipcMain.on('window-minimize', () => mainWindow.minimize());
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  });
+  ipcMain.on('window-close', () => mainWindow.close());
+
+  ipcMain.on('window-unmaximize', () => {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  });
+  ipcMain.on('window-maxmin', () => {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  });
+  ipcMain.on('window-maxminmac', () => {
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+    else mainWindow.setFullScreen(true);
+  });
+
+
+  // その他の IPC は元のコードに合わせて追加可能
+  // ...
+
+  // ウィンドウリサイズ時に BrowserView もリサイズ
+  mainWindow.on('resize', () => {
+    const [width, height] = mainWindow.getSize();
+    optionView.setBounds({ x: 0, y: 0, width, height });
+  });
+});
+app.on('window-all-closed', () => {
+  if (!isMac) app.quit();
+});
+app.on('activate', () => {
+  if (global.win === null) nw();
+});
+
+function showSetting() {
+  const setting = new BrowserWindow({
+    width: 760,
+    height: 480,
+    minWidth: 300,
+    minHeight: 270,
+    icon: `${directory}/image/logo.ico`,
+    webPreferences: {
+      preload: `${directory}/preload/setting.js`,
+      scrollBounce: true
+    }
+  });
+  monotConfig.update();
+  enginesConfig.update();
+  setting.loadFile(`${directory}/renderer/setting/index.html`);
+
+  // Apply of changes
+  const experiments = monotConfig.get('experiments');
+
+  if (monotConfig.get('wallpaper') !== '') {
+    setting.webContents.send('updateWallpaper', (monotConfig.get('wallpaper')));
+  }
+  if (monotConfig.get('cssTheme') !== '') {
+    setting.webContents.send('updateTheme', (monotConfig.get('cssTheme')));
+  }
+  setting.webContents.send('lang', (monotConfig.get('lang')));
+
+  if (experiments.forceDark === true) {
+    setting.webContents.executeJavaScript(`
+      document.querySelectorAll('input[type="checkbox"]')[0]
+        .checked = true;
+    `);
+  }
+  if (experiments.fontChange === true) {
+    setting.webContents.executeJavaScript(`
+      document.querySelectorAll('input[type="checkbox"]')[1]
+        .checked = true;
+    `);
+    if (experiments.changedfont !== '') {
+      setting.webContents.executeJavaScript(`
+        document.querySelectorAll('input[type="text"]')[0]
+          .value = ${experiments.changedfont};
+      `);
+    }
+  }
+
+  ipcMain.removeHandler('setting.openThemeDialog');
+  ipcMain.handle('setting.openThemeDialog', () => {
+    const fileDialog = dialog.showOpenDialog(
+      setting,
+      {
+        title: lang.get('select_theme'),
+        properties: [
+          'openFile'
+        ],
+        filters: [
+          {
+            name: 'CSS',
+            extensions: ['css']
+          }
+        ]
+      }
+    );
+    fileDialog.then((path) => {
+      monotConfig.update()
+        .set('cssTheme', path.filePaths[0])
+        .save();
+      if (path.filePaths[0] !== '')
+        setting.webContents.send('updateTheme', (replaceBackslashes(monotConfig.get('cssTheme'))));
+    });
+  });
+  ipcMain.removeHandler('init');
+  ipcMain.handle('init', () => {
+    setting.webContents.executeJavaScript(`
+    searchJson = \`${JSON.stringify(enginesConfig.get('values'))}\`;
+    setSearchList(JSON.parse(searchJson));
+    document.getElementById('engine-select').value = '${enginesConfig.get('engine')}';
+
+    document.getElementById('lang-select').value = '${monotConfig.get('lang')}';
+
+    document.head.innerHTML += '<link rel="stylesheet" href="${replaceBackslashes(monotConfig.get('cssTheme'))}">';
+  `);
+  });
+  ipcMain.removeHandler('setting.openWallpaperDialog');
+  ipcMain.handle('setting.openWallpaperDialog', () => {
+    const fileDialog = dialog.showOpenDialog(
+      setting,
+      {
+        title: lang.get('wallpaper'),
+        properties: [
+          'openFile'
+        ],
+        filters: [
+          {
+            name: lang.get('image'),
+            extensions: ['png', 'jpg', 'jpeg']
+          }
+        ]
+      }
+    );
+    fileDialog.then((path) => {
+      monotConfig.update()
+        .set('wallpaper', path.filePaths[0].replace(/\\/g, '/'))
+        .save();
+      if (path.filePaths[0] !== '') {
+        setting.webContents.send('updateWallpaper', (monotConfig.get('wallpaper')));
+        global.win.webContents.insertCSS(`
+          :root {
+            --wallpaper: url('file://${monotConfig.get('wallpaper')}')!important;
+          }
+        `);
+        console.log(`
+        :root {
+          --wallpaper: url('file://${monotConfig.get('wallpaper')}')!important;
+        }
+      `);
+      }
+    });
+  });
+}
+function showHistory() {
+  const historyWin = new BrowserWindow({
+    width: 760,
+    height: 480,
+    minWidth: 300,
+    minHeight: 270,
+    icon: `${directory}/image/logo.ico`,
+    webPreferences: {
+      preload: `${directory}/preload/history.js`,
+      scrollBounce: true
+    }
+  });
+
+  // Convert object to html
+  const histories = history.getAll();
+  let html = '';
+  // eslint-disable-next-line
+  for (const [key, value] of Object.entries(histories)) {
+    html = `
+      ${html}
+      <div onclick="node.open('${value.pageUrl.replace(/{/g, '&lbrace;').replace(/}/g, '&rbrace;')}');">
+        <div class="history-favicon" style="background-image: url('${value.pageIcon.replace(/{/g, '&lbrace;').replace(/}/g, '&rbrace;')}');"></div>
+        <div class="history-details">
+          <p>${value.pageTitle.replace(/{/g, '&lbrace;').replace(/}/g, '&rbrace;')}</p>
+        </div>
+      </div>
+    `;
+  }
+  ipcMain.removeHandler('update.History');
+  ipcMain.handle('update.History', () => {
+    historyWin.webContents.executeJavaScript(`
+      document.getElementById('histories').innerHTML = \`${html}\`;
+      document.head.innerHTML += '<link rel="stylesheet" href="${replaceBackslashes(monotConfig.get('cssTheme'))}">';
+  `);
+  });
+  historyWin.webContents.loadFile(`${directory}/renderer/history/index.html`);
+}
+function showBookmark() {
+  const bookmarkWin = new BrowserWindow({
+    width: 760,
+    height: 480,
+    minWidth: 300,
+    minHeight: 270,
+    icon: `${directory}/image/logo.ico`,
+    webPreferences: {
+      preload: `${directory}/preload/bookmark.js`,
+      scrollBounce: true
+    }
+  });
+  bookmarkWin.webContents.loadFile(`${directory}/renderer/bookmark/index.html`);
+  bookmark.update();
+  // Convert object to html
+  const bookmarks = bookmark.data;
+  let html = '';
+  // eslint-disable-next-line
+  for (const [key, value] of Object.entries(bookmarks)) {
+    html = `
+      ${html}
+      <div onclick="node.open('${value.pageUrl}');">
+        <div class="bookmark-favicon" style="background-image: url('${value.pageIcon}');"></div>
+        <div class="bookmark-details">
+          <p>${value.pageTitle}</p>
+          <p><a href="javascript:node.removeBookmark(${key});">${lang.get('delete')}</a></p>
+        </div>
+      </div>
+    `;
+  }
+  bookmarkWin.webContents.executeJavaScript(`
+    document.getElementById('bookmarks').innerHTML = \`${html}\`;
+    document.head.innerHTML += '<link rel="stylesheet" href="${replaceBackslashes(monotConfig.get('cssTheme'))}">';
+  `);
+}
+
+global.showSetting = showSetting;
+global.showHistory = showHistory;
+global.showBookmark = showBookmark;
+global.windowClose = windowClose;
+
+ipcMain.handle('moveView', (e, link, index) => {
     global.tabs.get(index).load(link);
   });
   ipcMain.handle('windowClose', () => {
@@ -541,8 +811,11 @@ app.on('ready', () => {
     }, 100);
   });
 
-  nw();
   ipcMain.handle('options', () => {
+    if (!optionView) {
+      console.error('optionView is not defined');
+      return;
+    }
     optionView.webContents.loadURL(`file://${directory}/renderer/menu/index.html`);
     optionView.webContents.insertCSS(style);
     if (BrowserWindow.fromBrowserView(optionView)) {
@@ -598,211 +871,3 @@ app.on('ready', () => {
       });
     enginesConfig.save();
   });
-});
-
-app.on('window-all-closed', () => {
-  if (!isMac) app.quit();
-});
-app.on('activate', () => {
-  if (global.win === null) nw();
-});
-
-function showSetting() {
-  const setting = new BrowserWindow({
-    width: 760,
-    height: 480,
-    minWidth: 300,
-    minHeight: 270,
-    icon: `${directory}/image/logo.ico`,
-    webPreferences: {
-      preload: `${directory}/preload/setting.js`,
-      scrollBounce: true
-    }
-  });
-  monotConfig.update();
-  enginesConfig.update();
-  setting.loadFile(`${directory}/renderer/setting/index.html`);
-
-  // Apply of changes
-  const experiments = monotConfig.get('experiments');
-
-  if (monotConfig.get('wallpaper') !== '') {
-    setting.webContents.send('updateWallpaper', (monotConfig.get('wallpaper')));
-  }
-  if (monotConfig.get('cssTheme') !== '') {
-    setting.webContents.send('updateTheme', (monotConfig.get('cssTheme')));
-  }
-  setting.webContents.send('lang', (monotConfig.get('lang')));
-
-  if (experiments.forceDark === true) {
-    setting.webContents.executeJavaScript(`
-      document.querySelectorAll('input[type="checkbox"]')[0]
-        .checked = true;
-    `);
-  }
-  if (experiments.fontChange === true) {
-    setting.webContents.executeJavaScript(`
-      document.querySelectorAll('input[type="checkbox"]')[1]
-        .checked = true;
-    `);
-    if (experiments.changedfont !== '') {
-      setting.webContents.executeJavaScript(`
-        document.querySelectorAll('input[type="text"]')[0]
-          .value = ${experiments.changedfont};
-      `);
-    }
-  }
-
-  ipcMain.removeHandler('setting.openThemeDialog');
-  ipcMain.handle('setting.openThemeDialog', () => {
-    const fileDialog = dialog.showOpenDialog(
-      setting,
-      {
-        title: lang.get('select_theme'),
-        properties: [
-          'openFile'
-        ],
-        filters: [
-          {
-            name: 'CSS',
-            extensions: ['css']
-          }
-        ]
-      }
-    );
-    fileDialog.then((path) => {
-      monotConfig.update()
-        .set('cssTheme', path.filePaths[0])
-        .save();
-      if (path.filePaths[0] !== '')
-        setting.webContents.send('updateTheme', (replaceBackslashes(monotConfig.get('cssTheme'))));
-    });
-  });
-  ipcMain.removeHandler('init');
-  ipcMain.handle('init', () => {
-    setting.webContents.executeJavaScript(`
-    searchJson = \`${JSON.stringify(enginesConfig.get('values'))}\`;
-    setSearchList(JSON.parse(searchJson));
-    document.getElementById('engine-select').value = '${enginesConfig.get('engine')}';
-
-    document.getElementById('lang-select').value = '${monotConfig.get('lang')}';
-
-    ui('${monotConfig.get('ui')}');
-    document.head.innerHTML += '<link rel="stylesheet" href="${replaceBackslashes(monotConfig.get('cssTheme'))}">';
-  `);
-  });
-  ipcMain.removeHandler('setting.openWallpaperDialog');
-  ipcMain.handle('setting.openWallpaperDialog', () => {
-    const fileDialog = dialog.showOpenDialog(
-      setting,
-      {
-        title: lang.get('wallpaper'),
-        properties: [
-          'openFile'
-        ],
-        filters: [
-          {
-            name: lang.get('image'),
-            extensions: ['png', 'jpg', 'jpeg']
-          }
-        ]
-      }
-    );
-    fileDialog.then((path) => {
-      monotConfig.update()
-        .set('wallpaper', path.filePaths[0].replace(/\\/g, '/'))
-        .save();
-      if (path.filePaths[0] !== '') {
-        setting.webContents.send('updateWallpaper', (monotConfig.get('wallpaper')));
-        global.win.webContents.insertCSS(`
-          :root {
-            --wallpaper: url('file://${monotConfig.get('wallpaper')}')!important;
-          }
-        `);
-        console.log(`
-        :root {
-          --wallpaper: url('file://${monotConfig.get('wallpaper')}')!important;
-        }
-      `);
-      }
-    });
-  });
-}
-function showHistory() {
-  const historyWin = new BrowserWindow({
-    width: 760,
-    height: 480,
-    minWidth: 300,
-    minHeight: 270,
-    icon: `${directory}/image/logo.ico`,
-    webPreferences: {
-      preload: `${directory}/preload/history.js`,
-      scrollBounce: true
-    }
-  });
-
-  // Convert object to html
-  const histories = history.getAll();
-  let html = '';
-  // eslint-disable-next-line
-  for (const [key, value] of Object.entries(histories)) {
-    html = `
-      ${html}
-      <div onclick="node.open('${value.pageUrl.replace(/{/g, '&lbrace;').replace(/}/g, '&rbrace;')}');">
-        <div class="history-favicon" style="background-image: url('${value.pageIcon.replace(/{/g, '&lbrace;').replace(/}/g, '&rbrace;')}');"></div>
-        <div class="history-details">
-          <p>${value.pageTitle.replace(/{/g, '&lbrace;').replace(/}/g, '&rbrace;')}</p>
-        </div>
-      </div>
-    `;
-  }
-  ipcMain.removeHandler('update.History');
-  ipcMain.handle('update.History', () => {
-    historyWin.webContents.executeJavaScript(`
-      document.getElementById('histories').innerHTML = \`${html}\`;
-      document.head.innerHTML += '<link rel="stylesheet" href="${replaceBackslashes(monotConfig.get('cssTheme'))}">';
-  `);
-  });
-  historyWin.webContents.loadFile(`${directory}/renderer/history/index.html`);
-}
-function showBookmark() {
-  const bookmarkWin = new BrowserWindow({
-    width: 760,
-    height: 480,
-    minWidth: 300,
-    minHeight: 270,
-    icon: `${directory}/image/logo.ico`,
-    webPreferences: {
-      preload: `${directory}/preload/bookmark.js`,
-      scrollBounce: true
-    }
-  });
-  bookmarkWin.webContents.loadFile(`${directory}/renderer/bookmark/index.html`);
-  bookmark.update();
-  // Convert object to html
-  const bookmarks = bookmark.data;
-  let html = '';
-  // eslint-disable-next-line
-  for (const [key, value] of Object.entries(bookmarks)) {
-    html = `
-      ${html}
-      <div onclick="node.open('${value.pageUrl}');">
-        <div class="bookmark-favicon" style="background-image: url('${value.pageIcon}');"></div>
-        <div class="bookmark-details">
-          <p>${value.pageTitle}</p>
-          <p><a href="javascript:node.removeBookmark(${key});">${lang.get('delete')}</a></p>
-        </div>
-      </div>
-    `;
-  }
-  bookmarkWin.webContents.executeJavaScript(`
-    document.getElementById('bookmarks').innerHTML = \`${html}\`;
-    document.head.innerHTML += '<link rel="stylesheet" href="${replaceBackslashes(monotConfig.get('cssTheme'))}">';
-  `);
-}
-
-global.showSetting = showSetting;
-global.showHistory = showHistory;
-global.showBookmark = showBookmark;
-global.windowClose = windowClose;
-global.windowOpen = nw;

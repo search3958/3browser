@@ -8,7 +8,9 @@
   --border-color: #ddde;
 }
 
-
+body{
+  background:transparent;
+}
 * {
   margin: 0;
   user-select: none;

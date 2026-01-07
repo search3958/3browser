@@ -5,15 +5,15 @@
     <title>Monot by monochrome.</title>
     <link rel="stylesheet" href="style/navigation.css" onload="updateTextColor()">
   </head>
-  <body class="thin">
+  <body class="thin" style="display:flex;align-items:flex-end;align-content:flex-end;flex-direction:column-reverse;">
     <nav>
-      <a href="javascript:node.moveToNewTab()" title="Home" id="home"></a>
-      <a href="javascript:node.reloadBrowser()" title="${reload}" id="reload"></a>
-      <a href="javascript:node.backBrowser()" title="${go_back}" id="prev"></a>
-      <a href="javascript:node.goBrowser()" title="${go_forward}" id="next"></a>
+      <a href="javascript:node.moveToNewTab()" title="Home" id="home">Home</a>
+      <a href="javascript:node.reloadBrowser()" title="${reload}" id="reload">Reload</a>
+      <a href="javascript:node.backBrowser()" title="${go_back}" id="prev">←</a>
+      <a href="javascript:node.goBrowser()" title="${go_forward}" id="next">→</a>
       <input type="text" placeholder="${enter_url_word}" id="textbox">
-      <a href="javascript:moveBrowser()" title="${go}" id="move"></a>
-      <a href="javascript:node.showMenu()" title="${view_menu}" id="menu" class="window"></a>
+      <a href="javascript:node.moveToNewTab()" title="Home" id="home">Next</a>
+      <a href="javascript:node.showMenu()" title="${view_menu}" id="menu" class="window">メニュー</a>
       <span id="window-btn"></span>
     </nav>
     <tab-el>

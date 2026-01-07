@@ -2,8 +2,13 @@
   font-family: 'Noto Sans JP';
   src: url('NotoSansJP-Light.otf') format('opentype');
 }
+@font-face {
+  font-family: 'M PLUS 2';
+  src: url('MPLUS2-VariableFont_wght.ttf') format('opentype');
+}
+
 *{
-  font-family: 'Noto Sans JP';
+  font-family: 'M PLUS 2' ,'Noto Sans JP';
   font-weight: 100;
 }
 h1{

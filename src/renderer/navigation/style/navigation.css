@@ -78,7 +78,29 @@ nav {
   width: 100%;
   transition: all 0.4s cubic-bezier(.7, 0, .3, 1);
   z-index: 0;
+    display: flex;
+    align-content: center;
+    justify-content: center;
+    align-items: center;
 }
+button#close {
+    height: 20px;
+    width: 20px;
+    background: #FF736A!important;
+    border-radius: 100%;
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.1);
+}
+
+button#maximize {
+    height: 20px;
+    width: 20px;
+    background: #19C332!important;
+    margin-right: 8px!important;
+    border-radius: 100%;
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.1);
+}
+
+
 #window-btn {
   -webkit-app-region: drag;
   min-width: 130px;
@@ -97,7 +119,8 @@ body nav > * {
   top: 0;
   display: inline-block;
   border-radius: 10px;
-  height: 23px;
+  height: 40px;
+  width: 40px;
   aspect-ratio: 1/1;
   margin: 3px;
   background-color: var(--backgroundcolor-unhover);
@@ -105,25 +128,26 @@ body nav > * {
   border: 1px solid var(--border-color-unhover);
   z-index: +1;
 }
-body input {
+input {
   -webkit-user-drag: initial;
-  width: 100%;
+  width: calc(100% - 366px)!important;
   padding: 0 7.5px;
   font-size: 11px;
   background-color: var(--input-color-unhover);
   color: var(--text-color);
   backdrop-filter: brightness(85%);
+    height: 48px;
+    margin-bottom: 9px;
+    border-radius:0px;
+    mask-image: paint(squircle);
+    --squircle-radius: 55px;
+    --squircle-smooth: 1;
 }
 body nav *:hover:not(#window-btn),
 div > span:hover,
-tab-el > a:hover,
-body nav input:focus {
+a:hover {
   box-shadow: 1px 1px 5px var(--shadow-color);
   background-color: var(--backgroundcolor);
-  border: 1px solid var(--border-color);
-}
-body nav *:first-child {
-  margin-left: 30px;
 }
 body nav *:last-child {
   margin-right: 4px;
@@ -133,6 +157,9 @@ nav a {
   background-repeat: no-repeat;
   background-size: 65%;
   cursor: default;
+
+    position: relative;
+    top: 2px;
 }
 nav a:active {
   background-color: var(--backgroundcolor-unhover);
@@ -149,33 +176,6 @@ nav a:active {
   min-width: 0;
   max-width: 0;
   margin-left: 0;
-}
-#home {
-  background-image: url('../../../image/home.png');
-}
-#reload {
-  background-image: url('../../../image/reload.png');
-}
-#prev {
-  background-image: url('../../../image/back.png');
-}
-#menu {
-  background-image: url('../../../image/option.png');
-}
-#next {
-  background-image: url('../../../image/prev.png');
-}
-#move {
-  background-image: url('../../../image/go.png');
-}
-#minimize {
-  background-image: url('../../../image/hide.png');
-}
-#maximize {
-  background-image: url('../../../image/maximize.png');
-}
-#close {
-  background-image: url('../../../image/close.png');
 }
 
 div > span > p:first-child {

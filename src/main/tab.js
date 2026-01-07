@@ -12,56 +12,21 @@ const {contextTemplate} = require('./menu');
 
 const fs = require('fs');
 const directory = `${__dirname}/..`;
-let viewY = 66;
+
 const {LowLevelConfig} = require(`${directory}/proprietary/lib/config.js`);
 const monotConfig = new LowLevelConfig('config.mncfg').copyFileIfNeeded(`${directory}/default/config/config.mncfg`);
 const enginesConfig = new LowLevelConfig('engines.mncfg').copyFileIfNeeded(`${directory}/default/config/engines.mncfg`);
 const bookmark = new LowLevelConfig('bookmark.mndata').copyFileIfNeeded(`${directory}/default/data/bookmark.mndata`);
 let windowSize;
-if (monotConfig.update().get('ui') === 'thin') viewY = 29;
 
 function replaceBackslashes(str) {
   return str.replace(/\\/g, "\/");
 }
 
-class ViewY {
-  constructor() {
-    this.type = monotConfig.update().get('ui');
-  }
-
-  get() {
-    return viewY;
-  }
-
-  getHtmlClass() {
-    let value;
-    switch (this.type) {
-    case 'thin': value = 'thin'; break;
-    case 'default': value = ''; break;
-    }
-    return value;
-  }
-
-  toThin() {
-    viewY = 29;
-    monotConfig
-      .update()
-      .set('ui', 'thin')
-      .save();
-    this.type = 'thin';
-    return 29;
-  }
-
-  toDefault() {
-    viewY = 66;
-    monotConfig
-      .update()
-      .set('ui', 'default')
-      .save();
-    this.type = 'default';
-    return 66;
-  }
-}
+// ★修正: ナビゲーションバーとタブバーの合計高さ (main.jsと合わせる)
+const NAV_HEIGHT = 70;
+const TAB_HEIGHT = 70;
+const TOTAL_FOOTER_HEIGHT = NAV_HEIGHT + TAB_HEIGHT; // 140px
 
 class TabManager {
   constructor() {
@@ -89,7 +54,9 @@ class TabManager {
       }
     `);
 
-    global.win.setTopBrowserView(this.tabs[index].entity);
+    // setTopBrowserViewを削除したことで、ナビゲーションバーとタブバーが最前面に来る
+    global.win.setBrowserView(this.tabs[index].entity); 
+
     this.tabs[index].setWindowTitle();
     this.current = index;
     this.tabs[index].setTitleUrl();
@@ -381,20 +348,28 @@ class Tab {
     global.win.addBrowserView(browserView);
     browserView.webContents.setZoomLevel(1);
 
+    // 開発者ツールの自動オープンを削除済み
+
     windowSize = global.win.getSize();
+    // ★修正: BrowserViewの高さをウィンドウ高さ - 140pxに設定
+    const BROWSER_VIEW_HEIGHT = windowSize[1] - TOTAL_FOOTER_HEIGHT;
+    
     browserView.setBounds({
       x: 0,
-      y: viewY,
+      y: 0, // ウィンドウの最上部から開始
       width: windowSize[0],
-      height: windowSize[1] - viewY
+      height: BROWSER_VIEW_HEIGHT
     });
+    
     global.win.on('resize', () => {
       windowSize = global.win.getSize();
+      const BROWSER_VIEW_HEIGHT = windowSize[1] - TOTAL_FOOTER_HEIGHT;
+      
       browserView.setBounds({
         x: 0,
-        y: viewY,
+        y: 0, // ウィンドウの最上部から開始
         width: windowSize[0],
-        height: windowSize[1] - viewY
+        height: BROWSER_VIEW_HEIGHT
       });
     });
 
@@ -498,21 +473,17 @@ class Tab {
   }
 
   replace() {
-
+    // BrowserViewの位置とサイズをウィンドウの高さ - 140pxに設定
     try {
       const windowSize = global.win.getSize();
+      const BROWSER_VIEW_HEIGHT = windowSize[1] - TOTAL_FOOTER_HEIGHT; 
+      
       this.entity.setBounds({
         x: 0,
-        y: viewY,
+        y: 0,
         width: windowSize[0],
-        height: windowSize[1] - viewY
+        height: BROWSER_VIEW_HEIGHT
       });
-      global.win.webContents.executeJavaScript(`
-        if (document.body.classList.contains('mac'))
-          document.body.className = 'mac ${new ViewY().getHtmlClass()}';
-        else
-          document.body.className = '${new ViewY().getHtmlClass()}';
-      `);
     } catch (e) {
       console.error(e);
     }
@@ -522,5 +493,4 @@ class Tab {
 module.exports = {
   Tab,
   TabManager,
-  ViewY
 };

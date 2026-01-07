@@ -1,9 +1,6 @@
 body nav a:first-child{
   margin-left: 4px;
 }
-body nav a:last-child{
-  margin-right: 30px;
-}
 :not(.full) #window-btn,
 .thin:not(.full) #window-btn {
   min-width: 30px;
